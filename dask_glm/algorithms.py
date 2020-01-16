@@ -91,6 +91,7 @@ def gradient_descent(X, y, max_iter=100, tol=1e-14, family=Logistic, **kwargs):
     """
     loglike, gradient = family.loglike, family.gradient
     n, p = X.shape
+    p = int(p)
     firstBacktrackMult = 0.1
     nextBacktrackMult = 0.5
     armijoMult = 0.1
@@ -98,7 +99,14 @@ def gradient_descent(X, y, max_iter=100, tol=1e-14, family=Logistic, **kwargs):
     stepSize = 1.0
     recalcRate = 10
     backtrackMult = firstBacktrackMult
-    beta = np.zeros_like(X, shape=(p,))
+
+    if not isinstance(X, da.Array):   
+        beta = np.zeros_like(X, shape=(p,))
+    elif "chunktype=cupy.ndarray" in repr(X) or kwargs.get('use_cupy',False):
+        import cupy as cp
+        beta = cp.zeros(p)
+    else: 
+        beta = np.zeros(p)
 
     for k in range(max_iter):
         # how necessary is this recalculation?
@@ -162,7 +170,14 @@ def newton(X, y, max_iter=50, tol=1e-8, family=Logistic, **kwargs):
     """
     gradient, hessian = family.gradient, family.hessian
     n, p = X.shape
-    beta = np.zeros_like(X, shape=(p,))  # always init to zeros?
+    p = int(p)
+    if not isinstance(X, da.Array):
+        beta = np.zeros_like(X, shape=(p,))  # always init to zeros?
+    elif "chunktype=cupy.ndarray" in repr(X) or kwargs.get('use_cupy',False):
+        import cupy as cp
+        beta = cp.zeros(p)
+    else:
+        beta = np.zeros(p)
     Xbeta = dot(X, beta)
 
     iter_count = 0
@@ -180,7 +195,15 @@ def newton(X, y, max_iter=50, tol=1e-8, family=Logistic, **kwargs):
         # should this be dask or numpy?
         # currently uses Python 3 specific syntax
         step, _, _, _ = np.linalg.lstsq(normalize_to_array(hess), normalize_to_array(grad))
-        step_like = np.empty_like(X, shape=step.shape)
+        #step_like = np.empty_like(X, shape=step.shape)
+        #step_like[:] = step
+        if not isinstance(X,da.Array):
+            step_like = np.empty_like(X, shape=step.shape)
+        elif "chunktype=cupy.ndarray" in repr(X) or kwargs.get('use_cupy',False):
+            step_like = cp.empty_like(X, shape=step.shape)
+        else:
+            step_like = np.zeros(step.shape)
+
         step_like[:] = step
         beta = (beta_old - step_like)
 
@@ -228,7 +251,7 @@ def admm(X, y, regularizer='l1', lamduh=0.1, rho=1, over_relax=1,
     def create_local_gradient(func):
         @functools.wraps(func)
         def wrapped(beta, X, y, z, u, rho):
-            beta_like = np.empty_like(X, shape=beta.shape)
+            beta_like = np.empty_like(X, shape=beta.shape) # numpy/cupy array, not dask array
             beta_like[:] = beta
             return normalize_to_array(func(beta_like, X, y) + rho *
                                       (beta_like - z + u))
@@ -237,7 +260,7 @@ def admm(X, y, regularizer='l1', lamduh=0.1, rho=1, over_relax=1,
     def create_local_f(func):
         @functools.wraps(func)
         def wrapped(beta, X, y, z, u, rho):
-            beta_like = np.empty_like(X, shape=beta.shape)
+            beta_like = np.empty_like(X, shape=beta.shape) # numpy/cupy array, not dask array
             beta_like[:] = beta
             return normalize_to_array(func(beta_like, X, y) + (rho / 2) *
                                       np.dot(beta_like - z + u, beta_like - z + u))
@@ -249,6 +272,7 @@ def admm(X, y, regularizer='l1', lamduh=0.1, rho=1, over_relax=1,
     nchunks = getattr(X, 'npartitions', 1)
     # nchunks = X.npartitions
     (n, p) = X.shape
+    p = int(p)
     # XD = X.to_delayed().flatten().tolist()
     # yD = y.to_delayed().flatten().tolist()
     if isinstance(X, da.Array):
@@ -260,9 +284,19 @@ def admm(X, y, regularizer='l1', lamduh=0.1, rho=1, over_relax=1,
     else:
         yD = [y]
 
-    z = np.zeros_like(X, shape=(p,))
-    u = np.stack([np.zeros_like(X, shape=(p,)) for i in range(nchunks)])
-    betas = np.stack([np.ones_like(X, shape=(p,)) for i in range(nchunks)])
+    if not isinstance(X,da.Array):
+        z = np.zeros_like(X, shape=(p,))
+        u = np.stack([np.zeros_like(X, shape=(p,)) for i in range(nchunks)])
+        betas = np.stack([np.ones_like(X, shape=(p,)) for i in range(nchunks)])
+    elif "chunktype=cupy.ndarray" in repr(X) or kwargs.get('use_cupy',False):
+        import cupy as cp
+        z = cp.zeros(p)
+        u = np.stack([cp.zeros(p) for i in range(nchunks)])
+        betas = np.stack([cp.ones(p) for i in range(nchunks)])
+    else:
+        z = np.zeros(p)
+        u = np.stack([np.zeros(p) for i in range(nchunks)])
+        betas = np.stack([np.ones(p) for i in range(nchunks)])    
 
     for k in range(max_iter):
 
@@ -308,7 +342,7 @@ def local_update(X, y, beta, z, u, rho, f, fprime, solver=fmin_l_bfgs_b):
                         maxiter=200,
                         maxfun=250)
 
-    beta_like = np.empty_like(X, shape=beta.shape)
+    beta_like = np.empty_like(X, shape=beta.shape) # numpy/cupy array, not dask array
     beta_like[:] = beta
     return beta_like
 
@@ -346,10 +380,23 @@ def lbfgs(X, y, regularizer=None, lamduh=1.0, max_iter=100, tol=1e-4,
         pointwise_gradient = regularizer.add_reg_grad(pointwise_gradient, lamduh)
 
     n, p = X.shape
-    beta0 = np.zeros_like(X, shape=(p,))
+    p = int(p)
+    if not isinstance(X, da.Array):
+        beta0 = np.zeros_like(X, shape=(p,))
+    elif "chunktype=cupy.ndarray" in repr(X) or kwargs.get('use_cupy',False):
+        import cupy as cp
+        beta0 = cp.zeros(p)
+    else:    
+        beta0 = np.zeros(p)   
 
     def compute_loss_grad(beta, X, y):
-        beta_like = np.empty_like(X, shape=beta.shape)
+        if not isinstance(X, da.Array):
+            beta_like = np.empty_like(X, shape=beta.shape)
+        elif "chunktype=cupy.ndarray" in repr(X) or kwargs.get('use_cupy',False):
+            import cupy as cp
+            beta_like = cp.zeros(beta.shape)
+        else:
+            beta_like = np.zeros(beta.shape)
         beta_like[:] = beta
         loss_fn = pointwise_loss(beta_like, X, y)
         gradient_fn = pointwise_gradient(beta_like, X, y)
@@ -362,7 +409,13 @@ def lbfgs(X, y, regularizer=None, lamduh=1.0, max_iter=100, tol=1e-4,
             args=(X, y),
             iprint=(verbose > 0) - 1, pgtol=tol, maxiter=max_iter)
 
-    beta_like = np.empty_like(X, shape=beta.shape)
+    if not isinstance(X, da.Array):
+        beta_like = np.empty_like(X, shape=beta.shape)
+    elif "chunktype=cupy.ndarray" in repr(X) or kwargs.get('use_cupy',False):
+        import cupy as cp
+        beta_like = cp.zeros(beta.shape)
+    else:
+        beta_like = np.zeros(beta.shape)
     beta_like[:] = beta
     return beta_like
 
@@ -392,6 +445,7 @@ def proximal_grad(X, y, regularizer='l1', lamduh=0.1, family=Logistic,
     beta : array-like, shape (n_features,)
     """
     n, p = X.shape
+    p = int(p)
     firstBacktrackMult = 0.1
     nextBacktrackMult = 0.5
     armijoMult = 0.1
@@ -399,7 +453,14 @@ def proximal_grad(X, y, regularizer='l1', lamduh=0.1, family=Logistic,
     stepSize = 1.0
     recalcRate = 10
     backtrackMult = firstBacktrackMult
-    beta = np.zeros_like(X, shape=(p,))
+    
+    if not isinstance(X, da.Array):
+        beta = np.zeros_like(X, shape=(p,))
+    elif "chunktype=cupy.ndarray" in repr(X) or kwargs.get('use_cupy',False):
+        import cupy as cp
+        beta = cp.zeros(p)
+    else: 
+        beta = np.zeros(p)
     regularizer = Regularizer.get(regularizer)
 
     for k in range(max_iter):
@@ -418,8 +479,8 @@ def proximal_grad(X, y, regularizer='l1', lamduh=0.1, family=Logistic,
         # Compute the step size
         lf = func
         for ii in range(100):
-            beta = regularizer.proximal_operator(obeta - stepSize * gradient, stepSize * lamduh)
-            step = obeta - beta
+            beta = regularizer.proximal_operator( -stepSize * gradient + obeta, stepSize * lamduh)
+            step = -beta + obeta
             Xbeta = X.dot(beta)
 
             Xbeta, beta = persist(Xbeta, beta)

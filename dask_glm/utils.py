@@ -67,9 +67,16 @@ def dot(A, B):
 
 @dispatch(object)
 def add_intercept(X):
-    return np.concatenate([X, np.ones_like(X, shape=(X.shape[0], 1))], axis=1)
+    if not isinstance(X, da.Array):
+        padding = np.ones_like(X, shape=(X.shape[0], 1))
+    elif "chunktype=cupy.ndarray" in repr(X) or kwargs.get('use_cupy',False):
+        import cupy as cp
+        padding = cp.ones((X.shape[0], 1))
+    else:
+        padding = np.ones((X.shape[0], 1))
+    return np.concatenate([X, padding], axis=1)
 
-
+"""
 @dispatch(da.Array)
 def add_intercept(X):
     if np.isnan(np.sum(X.shape)):
@@ -81,7 +88,7 @@ def add_intercept(X):
     # Is this OK / correct?
     X_i = da.concatenate([X, o], axis=1).rechunk((j, (k[0] + 1,)))
     return X_i
-
+"""
 
 def make_y(X, beta=np.array([1.5, -3]), chunks=2):
     n, p = X.shape
