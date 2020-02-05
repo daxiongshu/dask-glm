@@ -14,6 +14,8 @@ def normalize(algo):
     def normalize_inputs(X, y, *args, **kwargs):
         normalize = kwargs.pop('normalize', True)
         if normalize:
+            #print('normalize',type(X))
+            #print(repr(X))
             mean, std = da.compute(X.mean(axis=0), X.std(axis=0))
             mean, std = mean.copy(), std.copy()  # in case they are read-only
             intercept_idx = np.where(std == 0)
@@ -67,14 +69,21 @@ def dot(A, B):
 
 @dispatch(object)
 def add_intercept(X):
+    #print('intercept',type(X))
+    #print(repr(X))
     if not isinstance(X, da.Array):
         padding = np.ones_like(X, shape=(X.shape[0], 1))
     elif "chunktype=cupy.ndarray" in repr(X) or kwargs.get('use_cupy',False):
         import cupy as cp
         padding = cp.ones((X.shape[0], 1))
+        #print('cupy add intercept')
     else:
         padding = np.ones((X.shape[0], 1))
-    return np.concatenate([X, padding], axis=1)
+    res = np.concatenate([X, padding], axis=1)
+    if isinstance(res,da.Array):
+      rows,cols = res.chunksize
+      res = res.rechunk((rows,cols+1))
+    return res
 
 """
 @dispatch(da.Array)
