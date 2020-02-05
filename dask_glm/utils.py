@@ -73,7 +73,7 @@ def add_intercept(X):
     #print(repr(X))
     if not isinstance(X, da.Array):
         padding = np.ones_like(X, shape=(X.shape[0], 1))
-    elif "chunktype=cupy.ndarray" in repr(X) or kwargs.get('use_cupy',False):
+    elif "chunktype=cupy.ndarray" in repr(X):# or kwargs.get('use_cupy',False):
         import cupy as cp
         padding = cp.ones((X.shape[0], 1))
         #print('cupy add intercept')
