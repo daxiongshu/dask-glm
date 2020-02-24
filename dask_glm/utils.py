@@ -7,15 +7,14 @@ import dask.array as da
 import numpy as np
 from functools import wraps
 from multipledispatch import dispatch
-
+import time
 
 def normalize(algo):
     @wraps(algo)
     def normalize_inputs(X, y, *args, **kwargs):
         normalize = kwargs.pop('normalize', True)
         if normalize:
-            #print('normalize',type(X))
-            #print(repr(X))
+            start = time.time()
             mean, std = da.compute(X.mean(axis=0), X.std(axis=0))
             mean, std = mean.copy(), std.copy()  # in case they are read-only
             intercept_idx = np.where(std == 0)
@@ -66,23 +65,18 @@ def dot(A, B):
 def dot(A, B):
     return da.dot(A, B)
 
+def add_one_column(x):
+  intercept = np.ones_like(x[:,:1]).astype(x.dtype)
+  return np.concatenate([x,intercept],axis=1)
 
 @dispatch(object)
 def add_intercept(X):
-    #print('intercept',type(X))
-    #print(repr(X))
-    if not isinstance(X, da.Array):
-        padding = np.ones_like(X, shape=(X.shape[0], 1))
-    elif "chunktype=cupy.ndarray" in repr(X):# or kwargs.get('use_cupy',False):
-        import cupy as cp
-        padding = cp.ones((X.shape[0], 1))
-        #print('cupy add intercept')
+    if isinstance(X,da.Array):
+      n,m = X.chunksize
+      res = X.map_blocks(add_one_column,dtype=X.dtype,chunks=(n,m+1))
     else:
-        padding = np.ones((X.shape[0], 1))
-    res = np.concatenate([X, padding], axis=1)
-    if isinstance(res,da.Array):
-      rows,cols = res.chunksize
-      res = res.rechunk((rows,cols+1))
+      padding = np.ones_like(X, shape=(X.shape[0], 1))
+      res = np.concatenate([X, padding], axis=1)
     return res
 
 """

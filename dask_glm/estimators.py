@@ -3,7 +3,6 @@ Models following scikit-learn's estimator API.
 """
 import numpy as np
 from sklearn.base import BaseEstimator
-
 from . import algorithms
 from . import families
 from .utils import (

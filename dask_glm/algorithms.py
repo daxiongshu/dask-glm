@@ -7,6 +7,7 @@ import dask
 from dask import delayed, persist, compute
 import functools
 import numpy as np
+import cupy as cp
 import dask.array as da
 from scipy.optimize import fmin_l_bfgs_b
 
@@ -103,7 +104,6 @@ def gradient_descent(X, y, max_iter=100, tol=1e-14, family=Logistic, **kwargs):
     if not isinstance(X, da.Array):   
         beta = np.zeros_like(X, shape=(p,))
     elif "chunktype=cupy.ndarray" in repr(X) or kwargs.get('use_cupy',False):
-        import cupy as cp
         beta = cp.zeros(p)
     else: 
         beta = np.zeros(p)
@@ -174,7 +174,6 @@ def newton(X, y, max_iter=50, tol=1e-8, family=Logistic, **kwargs):
     if not isinstance(X, da.Array):
         beta = np.zeros_like(X, shape=(p,))  # always init to zeros?
     elif "chunktype=cupy.ndarray" in repr(X) or kwargs.get('use_cupy',False):
-        import cupy as cp
         beta = cp.zeros(p)
     else:
         beta = np.zeros(p)
@@ -252,7 +251,10 @@ def admm(X, y, regularizer='l1', lamduh=0.1, rho=1, over_relax=1,
         @functools.wraps(func)
         def wrapped(beta, X, y, z, u, rho):
             beta_like = np.empty_like(X, shape=beta.shape) # numpy/cupy array, not dask array
-            beta_like[:] = beta
+            if isinstance(beta,np.ndarray) and isinstance(beta_like,cp.ndarray):
+              beta_like = cp.asarray(beta)
+            else:
+              beta_like[:] = beta
             return normalize_to_array(func(beta_like, X, y) + rho *
                                       (beta_like - z + u))
         return wrapped
@@ -261,7 +263,12 @@ def admm(X, y, regularizer='l1', lamduh=0.1, rho=1, over_relax=1,
         @functools.wraps(func)
         def wrapped(beta, X, y, z, u, rho):
             beta_like = np.empty_like(X, shape=beta.shape) # numpy/cupy array, not dask array
-            beta_like[:] = beta
+            #print("*"*30)
+            #print(type(beta),type(beta_like))
+            if isinstance(beta,np.ndarray) and isinstance(beta_like,cp.ndarray):
+              beta_like = cp.asarray(beta)
+            else:
+              beta_like[:] = beta
             return normalize_to_array(func(beta_like, X, y) + (rho / 2) *
                                       np.dot(beta_like - z + u, beta_like - z + u))
         return wrapped
@@ -289,10 +296,10 @@ def admm(X, y, regularizer='l1', lamduh=0.1, rho=1, over_relax=1,
         u = np.stack([np.zeros_like(X, shape=(p,)) for i in range(nchunks)])
         betas = np.stack([np.ones_like(X, shape=(p,)) for i in range(nchunks)])
     elif "chunktype=cupy.ndarray" in repr(X) or kwargs.get('use_cupy',False):
-        import cupy as cp
         z = cp.zeros(p)
         u = np.stack([cp.zeros(p) for i in range(nchunks)])
         betas = np.stack([cp.ones(p) for i in range(nchunks)])
+        #print('use_cupy')
     else:
         z = np.zeros(p)
         u = np.stack([np.zeros(p) for i in range(nchunks)])
@@ -343,7 +350,10 @@ def local_update(X, y, beta, z, u, rho, f, fprime, solver=fmin_l_bfgs_b):
                         maxfun=250)
 
     beta_like = np.empty_like(X, shape=beta.shape) # numpy/cupy array, not dask array
-    beta_like[:] = beta
+    if isinstance(beta,np.ndarray) and isinstance(beta_like,cp.ndarray):
+      beta_like = cp.asarray(beta)
+    else:
+      beta_like[:] = beta
     return beta_like
 
 
@@ -384,7 +394,6 @@ def lbfgs(X, y, regularizer=None, lamduh=1.0, max_iter=100, tol=1e-4,
     if not isinstance(X, da.Array):
         beta0 = np.zeros_like(X, shape=(p,))
     elif "chunktype=cupy.ndarray" in repr(X) or kwargs.get('use_cupy',False):
-        import cupy as cp
         beta0 = cp.zeros(p)
     else:    
         beta0 = np.zeros(p)   
@@ -393,7 +402,6 @@ def lbfgs(X, y, regularizer=None, lamduh=1.0, max_iter=100, tol=1e-4,
         if not isinstance(X, da.Array):
             beta_like = np.empty_like(X, shape=beta.shape)
         elif "chunktype=cupy.ndarray" in repr(X) or kwargs.get('use_cupy',False):
-            import cupy as cp
             beta_like = cp.zeros(beta.shape)
         else:
             beta_like = np.zeros(beta.shape)
@@ -412,7 +420,6 @@ def lbfgs(X, y, regularizer=None, lamduh=1.0, max_iter=100, tol=1e-4,
     if not isinstance(X, da.Array):
         beta_like = np.empty_like(X, shape=beta.shape)
     elif "chunktype=cupy.ndarray" in repr(X) or kwargs.get('use_cupy',False):
-        import cupy as cp
         beta_like = cp.zeros(beta.shape)
     else:
         beta_like = np.zeros(beta.shape)
@@ -457,7 +464,6 @@ def proximal_grad(X, y, regularizer='l1', lamduh=0.1, family=Logistic,
     if not isinstance(X, da.Array):
         beta = np.zeros_like(X, shape=(p,))
     elif "chunktype=cupy.ndarray" in repr(X) or kwargs.get('use_cupy',False):
-        import cupy as cp
         beta = cp.zeros(p)
     else: 
         beta = np.zeros(p)
