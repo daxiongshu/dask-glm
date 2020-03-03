@@ -63,6 +63,8 @@ class _GLM(BaseEstimator):
 
     def fit(self, X, y=None, use_cupy=False, normalize=True):
         X_ = self._maybe_add_intercept(X)
+        #print(X_)
+        #print(y)
         fit_kwargs = dict(self._fit_kwargs)
         fit_kwargs['use_cupy'] = use_cupy
         fit_kwargs['normalize'] = normalize
@@ -129,7 +131,9 @@ class LogisticRegression(_GLM):
         return self.predict_proba(X) > .5  # TODO: verify, multiclass broken
 
     def predict_proba(self, X):
+        #print(X)
         X_ = self._maybe_add_intercept(X)
+        #print(X_)
         return sigmoid(dot(X_, self._coef))
 
     def score(self, X, y):

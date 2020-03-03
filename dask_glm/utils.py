@@ -5,6 +5,8 @@ import sys
 
 import dask.array as da
 import numpy as np
+import cupy as cp
+
 from functools import wraps
 from multipledispatch import dispatch
 import time
@@ -78,6 +80,38 @@ def add_intercept(X):
       padding = np.ones_like(X, shape=(X.shape[0], 1))
       res = np.concatenate([X, padding], axis=1)
     return res
+
+@dispatch(object)
+def add_intercept_concat(X):
+    if isinstance(X,da.Array):
+      if "chunktype=cupy.ndarray" in repr(X):
+        rs = da.random.RandomState(RandomState=cp.random.RandomState)
+      else:
+        rs = da.random.RandomState()         
+      dx = rs.normal(0, 1, size=[X.shape[0],1], chunks=X.chunksize)
+      one = dx/dx
+      del dx,rs
+      res = da.concatenate([X,one],axis=1)
+      rows,cols = X.chunksize
+      res = res.rechunk((rows,cols+1))
+      del one
+    else:
+      padding = np.ones_like(X, shape=(X.shape[0], 1))
+      res = np.concatenate([X, padding], axis=1)
+    return res
+
+@dispatch(object)
+def add_intercept_rechunk(X):
+    if "chunktype=cupy.ndarray" in repr(X):
+        padding = cp.ones((X.shape[0], 1))
+    else:
+        padding = np.ones((X.shape[0], 1))
+    res = np.concatenate([X, padding], axis=1)
+    if isinstance(res,da.Array):
+      rows,cols = res.chunksize
+      res = res.rechunk((rows,cols+1))
+    return res
+
 
 """
 @dispatch(da.Array)

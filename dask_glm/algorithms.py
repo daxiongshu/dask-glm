@@ -405,10 +405,38 @@ def lbfgs(X, y, regularizer=None, lamduh=1.0, max_iter=100, tol=1e-4,
             beta_like = cp.zeros(beta.shape)
         else:
             beta_like = np.zeros(beta.shape)
-        beta_like[:] = beta
-        loss_fn = pointwise_loss(beta_like, X, y)
-        gradient_fn = pointwise_gradient(beta_like, X, y)
-        loss, gradient = compute(loss_fn, gradient_fn)
+        #beta_like[:] = beta
+        if isinstance(beta,np.ndarray) and isinstance(beta_like,cp.ndarray):
+            beta_like = cp.asarray(beta)
+        else:
+            beta_like[:] = beta
+
+        #print(type(X),type(y),type(beta_like))
+        #1/0
+        if isinstance(X, da.Array):
+          XD = X.to_delayed().flatten().tolist()
+          yD = y.to_delayed().flatten().tolist()
+          loss = [delayed(pointwise_loss)(beta_like, xd, yd) for xd,yd in zip(XD,yD)]
+          gradient = [delayed(pointwise_gradient)(beta_like, xd, yd) for xd,yd in zip(XD,yD)]
+          N = len(loss)
+          lg = compute(*(loss+gradient))
+          #print(lg)
+          #print(cp.average(lg[N:],axis=0))
+          if isinstance(lg[-1],cp.ndarray):
+            gradient = cp.average(lg[N:],axis=0)
+          else:
+            gradient = np.average(lg[N:],axis=0)
+          loss = np.average(lg[:N])
+        else: 
+          loss_fn = pointwise_loss(beta_like, X, y)
+          gradient_fn = pointwise_gradient(beta_like, X, y)
+          loss, gradient = compute(loss_fn, gradient_fn)
+        #print("*"*20)
+        #print(loss.shape,gradient.shape)
+        #print(type(loss),type(gradient))
+        #print(loss)
+        #print(gradient)
+        #print("*"*20)
         return normalize_to_array(loss), normalize_to_array(gradient.copy())
 
     with dask.config.set(fuse_ave_width=0):  # optimizations slows this down
@@ -423,7 +451,12 @@ def lbfgs(X, y, regularizer=None, lamduh=1.0, max_iter=100, tol=1e-4,
         beta_like = cp.zeros(beta.shape)
     else:
         beta_like = np.zeros(beta.shape)
-    beta_like[:] = beta
+    
+    if isinstance(beta,np.ndarray) and isinstance(beta_like,cp.ndarray):
+        beta_like = cp.asarray(beta)
+    else:
+        beta_like[:] = beta
+
     return beta_like
 
 
