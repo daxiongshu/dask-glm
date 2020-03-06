@@ -1,8 +1,12 @@
 from __future__ import absolute_import, division, print_function
 
+import os
+os.environ["CUPY_EXPERIMENTAL_SLICE_COPY"] = "1"
+
 import inspect
 import sys
 
+import dask
 import dask.array as da
 import numpy as np
 import cupy as cp
@@ -51,6 +55,12 @@ def dot(A, B):
     B = da.from_array(B, chunks=B.shape)
     return da.dot(A, B)
 
+def dot_dask(A, B):
+    def dot_(a,b):
+        return a.dot(b)
+    As = A.to_delayed().flatten().tolist()
+    res = [dask.delayed(dot_)(a,B) for a in As]
+    return np.concatenate(da.compute(*res))
 
 @dispatch(np.ndarray, da.Array)
 def dot(A, B):
@@ -76,6 +86,7 @@ def add_intercept(X):
     if isinstance(X,da.Array):
       n,m = X.chunksize
       res = X.map_blocks(add_one_column,dtype=X.dtype,chunks=(n,m+1))
+      res.compute_chunk_sizes() # necessary step to fix shape
     else:
       padding = np.ones_like(X, shape=(X.shape[0], 1))
       res = np.concatenate([X, padding], axis=1)
@@ -115,7 +126,7 @@ def add_intercept_rechunk(X):
 
 """
 @dispatch(da.Array)
-def add_intercept(X):
+def add_intercept_orig(X):
     if np.isnan(np.sum(X.shape)):
         raise NotImplementedError("Can not add intercept to array with "
                                   "unknown chunk shape")

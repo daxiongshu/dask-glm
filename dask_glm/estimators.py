@@ -7,7 +7,7 @@ from . import algorithms
 from . import families
 from .utils import (
     sigmoid, dot, add_intercept, mean_squared_error, accuracy_score,
-    poisson_deviance
+    poisson_deviance 
 )
 
 
@@ -62,6 +62,7 @@ class _GLM(BaseEstimator):
         self._fit_kwargs = {k: getattr(self, k) for k in fit_kwargs}
 
     def fit(self, X, y=None, use_cupy=False, normalize=True):
+        #print(X)
         X_ = self._maybe_add_intercept(X)
         #print(X_)
         #print(y)
