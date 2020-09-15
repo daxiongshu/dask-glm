@@ -7,6 +7,7 @@ import dask
 from dask import delayed, persist, compute
 import functools
 import numpy as np
+import cupy as cp
 import dask.array as da
 from scipy.optimize import fmin_l_bfgs_b
 
@@ -336,11 +337,12 @@ def lbfgs(X, y, regularizer=None, lamduh=1.0, max_iter=100, tol=1e-4,
         pointwise_gradient = regularizer.add_reg_grad(pointwise_gradient, lamduh)
 
     n, p = X.shape
-    beta0 = np.zeros(p)
+    beta0 = cp.zeros(p)
 
     def compute_loss_grad(beta, X, y):
         scatter_beta = scatter_array(
             beta, dask_distributed_client) if dask_distributed_client else beta
+        print(type(X), type(y), type(scatter_beta))
         loss_fn = pointwise_loss(scatter_beta, X, y)
         gradient_fn = pointwise_gradient(scatter_beta, X, y)
         loss, gradient = compute(loss_fn, gradient_fn)
