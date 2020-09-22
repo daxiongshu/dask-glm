@@ -217,11 +217,22 @@ def scatter_array(arr, dask_client):
     Return the equivalent dask array
     """
     future_arr = dask_client.scatter(arr)
-    return da.from_delayed(future_arr, shape=arr.shape, dtype=arr.dtype)
-
+    return da.from_delayed(future_arr, shape=arr.shape, dtype=arr.dtype,
+                           meta=np.zeros_like(arr,shape=()))
 
 def get_distributed_client():
     try:
         return get_client()
     except ValueError:
         return None
+
+def maybe_to_cupy(beta, x):
+    #if isinstance(x, da.Array) and "cupy" in str(x)
+    if "cupy" in str(type(x)):
+        try:
+            import cupy
+            return cupy.asarray(beta)
+        except:
+            return beta
+    else:
+        return beta

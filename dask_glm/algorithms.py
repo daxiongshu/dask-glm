@@ -338,15 +338,16 @@ def lbfgs(X, y, regularizer=None, lamduh=1.0, max_iter=100, tol=1e-4,
         pointwise_gradient = regularizer.add_reg_grad(pointwise_gradient, lamduh)
 
     n, p = X.shape
-    beta0 = cp.zeros(p)
+    beta0 = np.zeros(p)
     #print(X)
     #print(y)
     def compute_loss_grad(beta, X, y):
+        beta = cp.asarray(beta)
         scatter_beta = scatter_array(
             beta, dask_distributed_client) if dask_distributed_client else beta
         #print(type(X), type(y), type(scatter_beta))
         #scatter_beta = cp.asarray(beta)
-        print(scatter_beta, X, y)
+        #print(scatter_beta, X, y)
         loss_fn = pointwise_loss(scatter_beta, X, y)
         gradient_fn = pointwise_gradient(scatter_beta, X, y)
         loss, gradient = compute(loss_fn, gradient_fn)
@@ -356,10 +357,11 @@ def lbfgs(X, y, regularizer=None, lamduh=1.0, max_iter=100, tol=1e-4,
 
     with dask.config.set(fuse_ave_width=0):  # optimizations slows this down
         beta, loss, info = fmin_l_bfgs_b(
-            compute_loss_grad, normalize_to_array(beta0), fprime=None,
+            compute_loss_grad, beta0, fprime=None,
             args=(X, y),
             iprint=(verbose > 0) - 1, pgtol=tol, maxiter=max_iter)
-    print('algo done')
+    #print('algo done')
+    beta = cp.asarray(beta)
     return beta
 
 

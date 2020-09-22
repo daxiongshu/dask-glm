@@ -9,7 +9,7 @@ from .utils import (
     sigmoid, dot, add_intercept, mean_squared_error,
     accuracy_score, exp, poisson_deviance, is_dask_array_sparse
 )
-
+import dask.array as da
 
 class _GLM(BaseEstimator):
     """ Base estimator for Generalized Linear Models
@@ -74,6 +74,7 @@ class _GLM(BaseEstimator):
             self.intercept_ = self._coef[-1]
         else:
             self.coef_ = self._coef
+        self._coef = da.from_array(self._coef, chunks=self._coef.shape)
         return self
 
     def _maybe_add_intercept(self, X):
@@ -131,6 +132,8 @@ class LogisticRegression(_GLM):
 
     def predict_proba(self, X):
         X_ = self._maybe_add_intercept(X)
+        print(type(X_))
+        print(type(self._coef))
         return sigmoid(dot(X_, self._coef))
 
     def score(self, X, y):
